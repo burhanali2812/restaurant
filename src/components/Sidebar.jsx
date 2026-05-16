@@ -126,7 +126,7 @@ function Sidebar({ children }) {
   {
     title: "Logout",
     icon: "fa-solid fa-right-from-bracket",
-    href: "/logout",
+    href: "/",
   },
 ];
   const toggleMenu = () => setIsOpen((prev) => !prev);
