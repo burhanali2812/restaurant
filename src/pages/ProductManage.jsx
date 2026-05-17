@@ -123,7 +123,7 @@ function ProductManage() {
         Array.isArray(res.data?.imageUrls) ? res.data.imageUrls : [],
       );
       if (!res.data?.imageUrls?.length) {
-        toast("No recommended images found for this product name");
+        toast.error("No recommended images found for this product name");
       }
     } catch (err) {
       console.error(err);
