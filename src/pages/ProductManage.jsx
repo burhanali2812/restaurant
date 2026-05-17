@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import toast, { Toaster } from "react-hot-toast";
 import imageCompression from "browser-image-compression";
@@ -15,6 +15,10 @@ function ProductManage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [recommendedImages, setRecommendedImages] = useState([]);
+  const [loadingRecommendedImages, setLoadingRecommendedImages] =
+    useState(false);
+  const imageInputRef = useRef(null);
 
   const initialForm = {
     name: "",
@@ -22,7 +26,8 @@ function ProductManage() {
     price: "",
     isVariants: false,
     variants: [{ name: "", price: "" }],
-    image: null,
+    imageFile: null,
+    imageURL: "",
   };
 
   const [form, setForm] = useState(initialForm);
@@ -62,6 +67,7 @@ function ProductManage() {
   const openAddModal = () => {
     setEditingId(null);
     setForm(initialForm);
+    setRecommendedImages([]);
     setShowModal(true);
   };
 
@@ -79,8 +85,10 @@ function ProductManage() {
               price: v.price != null ? String(v.price) : "",
             }))
           : [{ name: "", price: "" }],
-      image: null,
+      imageFile: null,
+      imageURL: p.imageURL || "",
     });
+    setRecommendedImages([]);
     setShowModal(true);
   };
 
@@ -88,6 +96,7 @@ function ProductManage() {
     setShowModal(false);
     setEditingId(null);
     setForm(initialForm);
+    setRecommendedImages([]);
   };
 
   const handleFormChange = (e) => {
@@ -95,6 +104,56 @@ function ProductManage() {
     setForm((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const fetchRecommendedImages = async () => {
+    const productName = form.name.trim();
+    if (!productName) {
+      return toast.error("Please enter a product name first");
+    }
+
+    try {
+      setLoadingRecommendedImages(true);
+      const res = await axios.get(`${API_BASE}/getRecommendedProductImages`, {
+        params: { name: productName },
+        headers,
+      });
+      setRecommendedImages(
+        Array.isArray(res.data?.imageUrls) ? res.data.imageUrls : [],
+      );
+      if (!res.data?.imageUrls?.length) {
+        toast("No recommended images found for this product name");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        err?.response?.data?.message || "Failed to load recommended images",
+      );
+    } finally {
+      setLoadingRecommendedImages(false);
+    }
+  };
+
+  const selectRecommendedImage = (imageURL) => {
+    setForm((prev) => ({
+      ...prev,
+      imageURL,
+      imageFile: null,
+    }));
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  };
+
+  const handleManualImageChange = (e) => {
+    const file = e.target.files?.[0] || null;
+
+    setForm((prev) => ({
+      ...prev,
+      imageFile: file,
+      imageURL: file ? "" : prev.imageURL,
     }));
   };
 
@@ -142,8 +201,11 @@ function ProductManage() {
       payload.append("name", form.name.trim());
       payload.append("description", form.description.trim());
       payload.append("restaurantId", restaurantId);
+      if (form.imageURL) {
+        payload.append("imageURL", form.imageURL);
+      }
 
-      let uploadImage = form.image;
+      let uploadImage = form.imageFile;
       if (uploadImage) {
         uploadImage = await imageCompression(uploadImage, {
           maxSizeMB: 0.3,
@@ -348,21 +410,6 @@ function ProductManage() {
 
               <form onSubmit={handleSubmit} className="pm-form">
                 <div className="mb-3">
-                  <label className="form-label">Product Image (optional)</label>
-                  <input
-                    className="form-control"
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        image: e.target.files?.[0] || null,
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="mb-3">
                   <label className="form-label">Product Name</label>
                   <input
                     className="form-control"
@@ -372,6 +419,86 @@ function ProductManage() {
                     placeholder="e.g. Zinger Burger"
                   />
                 </div>
+
+                {!editingId && (
+                  <div className="mb-3">
+                    <button
+                      type="button"
+                      className="btn btn-outline-primary pm-recommend-btn"
+                      onClick={fetchRecommendedImages}
+                      disabled={loadingRecommendedImages}
+                      hidden={form.name.trim() === ""}
+                    >
+                      {loadingRecommendedImages ? (
+                        <>
+                          <span
+                            className="spinner-border spinner-border-sm me-2"
+                            role="status"
+                            aria-hidden="true"
+                          ></span>
+                          Loading images...
+                        </>
+                      ) : (
+                        "Get Recommended Images"
+                      )}
+                    </button>
+
+                    {recommendedImages.length > 0 && (
+                      <div className="pm-recommended-grid">
+                        {recommendedImages.map((imageURL, index) => {
+                          const isSelected = form.imageURL === imageURL;
+
+                          return (
+                            <button
+                              type="button"
+                              key={`${imageURL}-${index}`}
+                              className={`pm-recommended-card ${
+                                isSelected ? "is-selected" : ""
+                              }`}
+                              onClick={() => selectRecommendedImage(imageURL)}
+                              aria-pressed={isSelected}
+                              aria-label={`Select recommended image ${index + 1}`}
+                            >
+                              {isSelected && (
+                                <span className="pm-recommended-selected-badge">
+                                  <i className="fas fa-check"></i>
+                                </span>
+                              )}
+                              <img
+                                src={imageURL}
+                                alt={`Recommended ${index + 1}`}
+                                className="pm-recommended-image"
+                              />
+                              {isSelected && (
+                                <span className="pm-recommended-selected-label">
+                                  Selected
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {form.imageURL && (
+                      <div className="pm-selected-image-note">
+                        Selected recommended image
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="mb-3">
+                  <label className="form-label">Product Image (optional)</label>
+                  <input
+                    ref={imageInputRef}
+                    className="form-control"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleManualImageChange}
+                  />
+                </div>
+
 
                 <div className="mb-3">
                   <label className="form-label">
